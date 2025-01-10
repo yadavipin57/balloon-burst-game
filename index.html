@@ -83,6 +83,7 @@
 
       // Add audio elements
       const bgmAudio = new Audio("./bgm.mp3");
+      const whooshAudio = new Audio("./whoosh.mp3");
       const burstAudio = new Audio("./burst.mp3");
 
       // Set background music to loop
@@ -310,6 +311,9 @@
           handlePressed = true;
           pumpHandleY += 20; // Move handle downward when pressed
           pumpCompressedScale = 1.03; // Bulge sideways
+
+          // Play whoosh sound
+          whooshAudio.play();
 
           if (!balloon) spawnBalloon();
         }
