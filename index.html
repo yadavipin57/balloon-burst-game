@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Balloon Pump Game</title>
+    <style>
+      body {
+        margin: 0;
+        overflow: hidden;
+        background: url("./Symbol3copy.png") no-repeat center center fixed;
+        background-size: cover;
+      }
+      canvas {
+        display: block;
+      }
+    </style>
+  </head>
+  <body>
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+      const canvas = document.getElementById("gameCanvas");
+      const ctx = canvas.getContext("2d");
+
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+
+      // Game assets
+      const pumpImg = new Image();
+      pumpImg.src = "./pump.png";
+
+      const pumpHandleImg = new Image();
+      pumpHandleImg.src = "./Symbol320001.png";
+
+      const balloonImages = [
+        "./Symbol100001.png", // Green
+        "./Symbol100002.png", // Blue
+        "./Symbol100003.png", // Yellow
+        "./Symbol100004.png", // Pink
+        "./Symbol100005.png", // Red
+        "./Symbol100006.png", // Orange
+        "./Symbol100007.png", // Light Pink
+        "./Symbol100008.png", // Blue Orange
+        "./Symbol100009.png", // Purple
+      ];
+
+      const alphabetImages = {};
+      for (let charCode = 65; charCode <= 90; charCode++) {
+        const letter = String.fromCharCode(charCode);
+        alphabetImages[letter] = `./${letter}.png`;
+      }
+
+      // Balloon colors associated with each balloon image (RGBA format for particles)
+      const balloonColors = [
+        "0,255,0", // Green
+        "66, 200, 245", // Light Blue
+        "255,255,0", // Yellow
+        "255,105,180", // Pink
+        "255,0,0", // Red
+        "255,165,0", // Orange
+        "255,182,193", // Light Pink
+        "70,130,180", // Blue Orange
+        "255, 145, 0", // Dark orange
+        "128,0,128", // Purple
+      ];
+
+      // Game variables
+      let pumpX = canvas.width - 350;
+      let pumpY = canvas.height - 350;
+      let pumpHandleY = pumpY + 88; // Adjusted handle position to the top of the pump
+      let pumpCompressedScale = 1; // Scale for sideways bulge
+      let handlePressed = false;
+
+      let balloon = null;
+      let balloons = [];
+      let score = 0;
+
+      const stringImg = new Image();
+      stringImg.src = "./String.png";
+
+      // Particle class for burst effect
+      class Particle {
+        constructor(x, y, color) {
+          this.x = x;
+          this.y = y;
+          this.size = Math.random() * 10 + 5; // Random size for particles
+          this.speedX = Math.random() * 4 - 2; // Random horizontal speed
+          this.speedY = Math.random() * 4 - 2; // Random vertical speed
+          this.alpha = 1; // Full opacity initially
+          this.color = color; // Particle color based on balloon color
+        }
+
+        update() {
+          this.x += this.speedX;
+          this.y += this.speedY;
+          this.alpha -= 0.02; // Fade out the particle
+
+          // Remove particle when it's too transparent
+          if (this.alpha <= 0) {
+            this.alpha = 0;
+          }
+        }
+
+        draw() {
+          ctx.beginPath();
+          ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+          ctx.fillStyle = `rgba(${this.color}, ${this.alpha})`; // Use the RGBA color format
+          ctx.fill();
+        }
+      }
+
+      // Balloon class with burst effect
+      class Balloon {
+        constructor(x, y, letter, color) {
+          this.x = x;
+          this.y = y;
+          this.size = 50;
+          this.letter = letter;
+          this.color = color; // Store the color of the balloon
+          this.image = new Image();
+          this.image.src = balloonImages[balloonColors.indexOf(color)]; // Set the balloon image based on color
+          this.alphabetImage = new Image();
+          this.alphabetImage.src = alphabetImages[letter];
+          this.speedX = Math.random() - 2;
+          this.speedY = -(Math.random() + 2);
+          this.released = false; // Track if the balloon is released
+          this.stringImage = new Image();
+          this.stringImage.src = "./String.png"; // String image path
+
+          this.bursting = false; // Track if the balloon is bursting
+          this.particles = []; // Store particles when the balloon bursts
+        }
+
+        grow() {
+          this.size += 30;
+          if (this.size >= 150) {
+            this.released = true; // Mark as released when fully inflated
+          }
+        }
+
+        burst() {
+          this.bursting = true; // Start the burst effect
+          // Create particles at the center of the balloon
+          for (let i = 0; i < 50; i++) {
+            // Create 50 particles
+            // Generate particles with color matching the balloon
+            this.particles.push(new Particle(this.x, this.y, this.color));
+          }
+        }
+
+        update() {
+          if (this.released) {
+            this.x += this.speedX;
+            this.y += this.speedY;
+          }
+
+          // Update burst particles
+          if (this.bursting) {
+            this.particles.forEach((particle) => particle.update());
+            // Remove the balloon after bursting
+            if (this.particles.every((p) => p.alpha <= 0)) {
+              balloons.splice(balloons.indexOf(this), 1); // Remove balloon from array
+              score += 1;
+            }
+          }
+        }
+
+        draw() {
+          if (this.bursting) {
+            // Draw the burst particles
+            this.particles.forEach((particle) => particle.draw());
+            return; // Skip drawing the balloon itself
+          }
+
+          // Draw balloon image
+          ctx.drawImage(
+            this.image,
+            this.x - this.size / 2,
+            this.y - this.size / 2 - 10,
+            this.size,
+            this.size
+          );
+
+          // Draw alphabet image at the center of the balloon
+          const alphabetSize = this.size / 2;
+          ctx.drawImage(
+            this.alphabetImage,
+            this.x - alphabetSize / 2,
+            this.y - alphabetSize / 2 - this.size / 8,
+            alphabetSize,
+            alphabetSize
+          );
+
+          if (this.released) {
+            // Draw the string when the balloon is released
+            const stringWidth = this.size / 4; // Adjust width relative to balloon size
+            const stringHeight = this.size; // Adjust height relative to balloon size
+            ctx.drawImage(
+              this.stringImage,
+              this.x - stringWidth / 2, // Center the string horizontally
+              this.y + this.size / 2 - 82, // Attach the string below the balloon
+              stringWidth,
+              stringHeight
+            );
+          }
+        }
+      }
+
+      function drawPump() {
+        // Save the current canvas state
+        ctx.save();
+
+        // Draw the pump handle first
+        ctx.drawImage(pumpHandleImg, pumpX + 145, pumpHandleY, 150, 100);
+
+        // Draw the pump body over the handle
+        ctx.save();
+        ctx.translate(pumpX + 175, pumpY + 175); // Center at the pump
+        ctx.scale(pumpCompressedScale, 1); // Scale for the bulge effect
+        ctx.drawImage(pumpImg, -175, -175, 350, 350);
+        ctx.restore();
+
+        // Restore the canvas state
+        ctx.restore();
+      }
+
+      function spawnBalloon() {
+        const letters = Object.keys(alphabetImages);
+        const randomLetter =
+          letters[Math.floor(Math.random() * letters.length)];
+        const randomColor =
+          balloonColors[Math.floor(Math.random() * balloonColors.length)];
+        balloon = new Balloon(
+          pumpX + 83,
+          pumpY + 135,
+          randomLetter,
+          randomColor
+        );
+      }
+
+      function updateGame() {
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        if (balloon) balloon.draw();
+
+        balloons.forEach((b, index) => {
+          b.update();
+          b.draw();
+
+          // Remove balloons that go off screen or burst
+          if (b.y + b.size < 0 || b.size >= 200) {
+            balloons.splice(index, 1);
+          }
+        });
+
+        drawPump();
+
+        // Display Score
+        drawScore();
+
+        if (handlePressed && balloon) {
+          balloon.grow();
+          if (balloon.size >= 150) {
+            balloons.push(balloon);
+            balloon = null;
+          }
+          handlePressed = false;
+        }
+
+        requestAnimationFrame(updateGame);
+      }
+
+      function drawScore() {
+        ctx.font = "30px Arial";
+        ctx.fillStyle = "green"; // Set the text color
+        ctx.textAlign = "left"; // Align text to the left
+        ctx.fillText(`Score: ${score}`, 20, 40); // Display score at the top-left corner
+      }
+
+      function handleMouseDown(e) {
+        const mouseX = e.clientX;
+        const mouseY = e.clientY;
+
+        // Check if pump handle is clicked
+        if (
+          mouseX > pumpX + 175 &&
+          mouseX < pumpX + 265 &&
+          mouseY > pumpHandleY + 10 &&
+          mouseY < pumpHandleY + 50
+        ) {
+          handlePressed = true;
+          pumpHandleY += 20; // Move handle downward when pressed
+          pumpCompressedScale = 1.03; // Bulge sideways
+
+          if (!balloon) spawnBalloon();
+        }
+
+        // Check if a balloon is clicked
+        balloons.forEach((b, index) => {
+          const dist = Math.sqrt((mouseX - b.x) ** 2 + (mouseY - b.y) ** 2);
+          if (dist < b.size / 2) {
+            b.burst(); // Start burst effect on the balloon
+          }
+        });
+      }
+
+      function handleMouseUp() {
+        pumpHandleY = pumpY + 88; // Reset handle position to the top of the pump
+        pumpCompressedScale = 1; // Reset pump scale
+      }
+
+      canvas.addEventListener("mousedown", handleMouseDown);
+      canvas.addEventListener("mouseup", handleMouseUp);
+
+      updateGame();
+    </script>
+  </body>
+</html>
